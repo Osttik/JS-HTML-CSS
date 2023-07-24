@@ -1,0 +1,11 @@
+.drawable {
+    width: 95vw;
+    height: 95vh;
+    margin: auto;
+    border: 1px solid grey;
+}
+
+.container {
+    display: flex;
+    flex-direction: row;
+}
