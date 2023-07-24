@@ -77,7 +77,7 @@ function change(n) {
 	[...Array(n)].map(()=>{return Math.floor(Math.random()*objects.length)}).forEach(randIndex => objects[randIndex].color = getRandomColorRGB());
 }
 
-generateObjects(1, 1500000, 1);
+generateObjects(1, 100000, 1);
 
 function drawAll() {
 	clearCanvas();
