@@ -1,7 +1,11 @@
 const ctx = document.getElementById("rendable").getContext("2d");
+const outliner = document.getElementById("outliner");
+const dataPopup = document.getElementById("objData");
 const fpsDiv = document.getElementById("fps");
 var currentScale = 10;
 var isRendering = false;
+var selectedObjectId = -1;
+
 
 ctx.canvas.addEventListener('contextmenu', event => {
 	event.preventDefault();
@@ -9,11 +13,54 @@ ctx.canvas.addEventListener('contextmenu', event => {
 
 ctx.canvas.addEventListener('mousedown', e => {
 	if(e.which === 3) {
-		startPosition = new Position(e.clientX, e.clientY);
+		startPosition = new Position(e.offsetX, e.offsetY);
 		prevCenter = new Position(center.x, center.y);
 		ctx.canvas.addEventListener('mousemove', move);
 	}
+	else if(e.which === 1) {
+		var clickPoint = new Position(e.offsetX - center.x * currentScale, e.offsetY - center.y * currentScale);
+		selectedObjectId = objects.findIndex(o => {
+			return o.position.x*currentScale <= clickPoint.x && (o.position.x + o.angles)*currentScale >= clickPoint.x &&
+			o.position.y*currentScale <= clickPoint.y && (o.position.y + o.angles)*currentScale >= clickPoint.y 
+		});
+		if (selectedObjectId === -1) return;
+		var obj = objects[selectedObjectId];
+		select(obj);
+	}
 });
+
+function select(obj) {
+	unselect();
+	var rectOfCanvas = ctx.canvas.getBoundingClientRect();
+	outliner.style.top = `${(obj.position.y + center.y) * currentScale + rectOfCanvas.y - 4}px`;
+	outliner.style.left = `${(obj.position.x + center.x) * currentScale + rectOfCanvas.x - 4}px`;
+	outliner.style.width = `${obj.angles * currentScale}px`;
+	outliner.style.height = `${obj.angles * currentScale}px`;
+	outliner.style.borderColor = `rgb(${255 - obj.color[0]}, ${255 - obj.color[1]}, ${255 - obj.color[2]})`;
+	
+	dataPopup.firstElementChild.style.backgroundColor = `rgb(${obj.color[0]}, ${obj.color[1]}, ${obj.color[2]})`;
+	dataPopup.children[1].textContent = `rgb(${Math.floor(obj.color[0])}, ${Math.floor(obj.color[1])}, ${Math.floor(obj.color[2])})`;
+
+	objects[selectedObjectId] = new Proxy(obj, {set(o, property, data) {
+		o[property] = data;
+		if (property !== 'color') return;
+		
+		outliner.style.borderColor = `rgb(${255 - data[0]}, ${255 - data[1]}, ${255 - data[2]})`;
+		dataPopup.firstElementChild.style.backgroundColor = `rgb(${data[0]}, ${data[1]}, ${data[2]})`;
+		dataPopup.children[1].textContent = `rgb(${Math.floor(data[0])}, ${Math.floor(data[1])}, ${Math.floor(data[2])})`;
+	}});
+
+	outliner.style.display = 'block';
+	dataPopup.style.display = 'flex';
+}
+
+function unselect() {
+	outliner.style.display = 'none';
+	dataPopup.style.display = 'none';
+	objects[selectedObjectId] = {...objects[selectedObjectId]};
+	selectedObjectId = -1;
+}
+
 ctx.canvas.addEventListener('mouseup', e => {
 	if(e.which === 3) {
 		startPosition = new Position(0, 0);
@@ -24,6 +71,7 @@ ctx.canvas.addEventListener('mouseup', e => {
 function move(e) {
 	center.x = Math.floor(prevCenter.x + (e.clientX - startPosition.x) / currentScale);
 	center.y = Math.floor(prevCenter.y + (e.clientY - startPosition.y) / currentScale);
+	unselect();
 	//startPosition.x = center.x;
 	//startPosition.y = center.y;
 }
@@ -67,17 +115,17 @@ class Object {
 	}
 }
 
+generateObjects(1, 10000, 1);
+setInterval(async () => change(2000), 1000);
+
 function drawRandom() {
 	draw(new Position(Math.random()* 900, Math.random()*900), triangle, 10)
 }
-
-setInterval(async () => change(2000), 1000)
 
 function change(n) {
 	[...Array(n)].map(()=>{return Math.floor(Math.random()*objects.length)}).forEach(randIndex => objects[randIndex].color = getRandomColorRGB());
 }
 
-generateObjects(1, 100000, 1);
 
 function drawAll() {
 	clearCanvas();
@@ -90,7 +138,7 @@ function zoom(e) {
 	//currentScale = delta > 0 ? currentScale * 1.1 : currentScale / 1.1;
 	currentScale += delta;
 	if (currentScale <= 0) currentScale = 1;
-	console.log(currentScale)
+	unselect();
 }
 
 function download(){
@@ -120,7 +168,6 @@ function generateObjects(object, count, space) {
 			));
 		}
 	}
-	console.log("Generated");
 }
 
 function clearCanvas() {
@@ -150,7 +197,7 @@ function drawT2() {
 			for (let y = 0; y < o.angles*currentScale; y++) {
 				for (let x = 0; x < o.angles*currentScale; x++) {
 					if (position.x*currentScale + x > ctx.canvas.width ||
-						position.x*currentScale + x - 1 < 0) {continue;}
+						position.x*currentScale + x - 1 < 0) continue;
 
 					const point = Math.floor((position.x*currentScale + position.y*imageData.width*currentScale + x + y*imageData.width - 1) * 4);
 					
@@ -162,7 +209,6 @@ function drawT2() {
 			}
 		};
 
-		//console.log("End 2", imageData, [...imageData.data]);
 		ctx.putImageData(imageData, 0, 0);
 		resolve();
 	});
@@ -201,7 +247,7 @@ setInterval(() => {
 	var start = performance.now();
 	drawT2().finally(() => {
 		isRendering = false;
-		fpsDiv.textContent = (1000/(performance.now() - start)).toFixed();
+		fpsDiv.textContent = (performance.now() - start).toFixed();
 	});
 }, 1);
 
@@ -209,10 +255,15 @@ function render(fn) {
 	return new Promise((resolve) => {
 		setTimeout(drawT2().finally(() => {
 			fn(fn);
-			console.log("render");
 			resolve();
 		}), 100);
 	});
 }
 
 //setTimeout(() => render(render), 0);
+
+function perform(func) {
+	var start = performance.now();
+	func();
+	return performance.now() - start;
+}
